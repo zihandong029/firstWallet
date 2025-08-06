@@ -5,6 +5,7 @@
   ],
   "include": [
     ".plasmo/index.d.ts",
+    "dist/index.d.ts",
     "./**/*.ts",
     "./**/*.tsx"
   ],
@@ -14,6 +15,8 @@
         "./*"
       ]
     },
-    "baseUrl": "."
+    "baseUrl": ".",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
   }
 }

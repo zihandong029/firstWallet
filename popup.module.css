@@ -1,0 +1,575 @@
+/* 钱包容器 */
+.wallet-container {
+  width: 360px;
+  height: 600px;
+  background: linear-gradient(135deg, #4338ca 0%, #7e22ce 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #333;
+  overflow: hidden;
+  position: relative;
+}
+
+
+body {
+  padding: 0!important;
+  margin: 0;
+}
+
+
+/* 通用样式 */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: white;
+  font-size: 16px;
+}
+
+.loading-spinner {
+  height: 24px;
+  width: 24px;
+  border: 3px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 解锁钱包样式 */
+.unlock-container {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(67, 56, 202, 0.8) 0%, rgba(126, 34, 206, 0.8) 100%);
+}
+
+.unlock-card {
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  overflow: hidden;
+  transform: translateY(0);
+  transition: all 0.3s ease;
+  animation: float 6s ease-in-out infinite;
+}
+
+.unlock-header {
+  padding: 32px;
+  padding-bottom: 16px;
+  text-align: center;
+  background: linear-gradient(to bottom, rgba(249, 250, 251, 1) 0%, rgba(255, 255, 255, 0.8) 100%);
+}
+
+.unlock-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+
+.unlock-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.unlock-subtitle {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.unlock-form {
+  padding: 32px;
+  padding-top: 16px;
+}
+
+.input-wrapper {
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.unlock-input {
+  width: 100%;
+  padding: 16px 20px;
+  padding-right: 48px;
+  font-size: 18px;
+  background-color: #f9fafb;
+  border: 2px solid #f3f4f6;
+  border-radius: 12px;
+  outline: none;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+
+.unlock-input:focus {
+  border-color: #60a5fa;
+  background-color: white;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 2px 4px rgba(0, 0, 0, 0);
+  transform: translateY(-1px);
+}
+
+.unlock-input::placeholder {
+  color: #9ca3af;
+}
+
+.input-icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 20px;
+}
+
+.unlock-button {
+  width: 100%;
+  padding: 16px 24px;
+  margin-top: 16px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 500;
+  font-size: 18px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+  border: none;
+  cursor: pointer;
+}
+
+.unlock-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 14px rgba(59, 130, 246, 0.4);
+  background: linear-gradient(45deg, #2563eb, #7c3aed);
+}
+
+.unlock-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 3px 8px rgba(59, 130, 246, 0.3);
+}
+
+.unlock-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: linear-gradient(45deg, #93c5fd, #c4b5fd);
+}
+
+.button-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.button-icon {
+  margin-left: 4px;
+}
+
+.unlock-error {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #dc2626;
+  background-color: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  animation: shake 0.5s ease-in-out;
+}
+
+.unlock-spinner {
+  height: 20px;
+  width: 20px;
+  border: 2px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+}
+
+/* 表单样式 */
+.form-container {
+  background: white;
+  border-radius: 20px;
+  margin: 20px;
+  padding: 30px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  height: calc(100% - 40px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.form-title {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-subtitle {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.input-group {
+  margin-bottom: 20px;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #555;
+}
+
+.input-field {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input-field:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.textarea-field {
+  min-height: 100px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* 按钮样式 */
+.btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary {
+  background: #f8f9fa;
+  color: #667eea;
+  border: 2px solid #667eea;
+}
+
+.btn-secondary:hover {
+  background: #667eea;
+  color: white;
+}
+
+.btn-small {
+  width: auto;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+/* 错误提示 */
+.error-message {
+  color: #e74c3c;
+  font-size: 14px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.success-message {
+  color: #27ae60;
+  font-size: 14px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* 助记词显示 */
+.mnemonic-container {
+  background: #f8f9fa;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.mnemonic-words {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.mnemonic-word {
+  background: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  border: 1px solid #e1e5e9;
+}
+
+.mnemonic-word-index {
+  color: #999;
+  font-size: 12px;
+  margin-right: 5px;
+}
+
+/* 钱包仪表板 */
+.dashboard {
+  background: white;
+  border-radius: 20px 20px 0 0;
+  margin-top: 60px;
+  height: calc(100% - 60px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.dashboard-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  position: relative;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.wallet-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.lock-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.account-info {
+  text-align: center;
+}
+
+.account-address {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+.account-balance {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.balance-usd {
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+/* 操作按钮 */
+.action-buttons {
+  display: flex;
+  justify-content: space-around;
+  padding: 20px;
+  background: white;
+}
+
+.action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+.action-button:hover {
+  background: #f8f9fa;
+}
+
+.action-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.action-text {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* 导航标签 */
+.nav-tabs {
+  display: flex;
+  background: #f8f9fa;
+  margin: 0 20px;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.nav-tab {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.nav-tab.active {
+  background: white;
+  color: #667eea;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 内容区域 */
+.tab-content {
+  padding: 20px;
+  height: 200px;
+  overflow-y: auto;
+}
+
+/* 发送表单 */
+.send-form {
+  padding: 20px;
+}
+
+.send-form .input-group {
+  margin-bottom: 15px;
+}
+
+.gas-settings {
+  display: flex;
+  gap: 10px;
+}
+
+.gas-settings .input-group {
+  flex: 1;
+}
+
+/* 账户选择器 */
+.account-selector {
+  margin-bottom: 20px;
+}
+
+.account-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.account-option:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.account-option.selected {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.account-details {
+  flex: 1;
+}
+
+.account-name {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.account-address-short {
+  font-size: 12px;
+  color: #999;
+}
+
+.account-balance-small {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+} 

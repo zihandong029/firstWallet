@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPC节点连接测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .network-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .network-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #444;
+        }
+        .rpc-item {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .rpc-url {
+            flex: 1;
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.testing {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 RPC节点连接测试</h1>
+        <p style="text-align: center; color: #666;">测试不同以太坊RPC节点的连接状态</p>
+        
+        <div class="network-section">
+            <div class="network-title">🔷 Ethereum Mainnet</div>
+            <div id="mainnet-rpcs"></div>
+            <button class="test-button" onclick="testMainnet()">测试主网RPC</button>
+        </div>
+
+        <div class="network-section">
+            <div class="network-title">🔸 Sepolia Testnet</div>
+            <div id="sepolia-rpcs"></div>
+            <button class="test-button" onclick="testSepolia()">测试测试网RPC</button>
+        </div>
+
+        <div>
+            <button class="test-button" onclick="testAllRpcs()">测试所有RPC</button>
+            <button class="test-button" onclick="clearLog()">清除日志</button>
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const networks = {
+            mainnet: {
+                name: 'Ethereum Mainnet',
+                chainId: 1,
+                rpcs: [
+                    'https://eth.llamarpc.com',
+                    'https://rpc.ankr.com/eth',
+                    'https://ethereum.publicnode.com',
+                    'https://eth-mainnet.rpcfast.com',
+                    'https://mainnet.infura.io/v3/d8ed0bd1de8242d998a1405b6932ab33',
+                    'https://eth-mainnet.alchemyapi.io/v2/demo',
+                    'https://cloudflare-eth.com'
+                ]
+            },
+            sepolia: {
+                name: 'Sepolia Testnet',
+                chainId: 11155111,
+                rpcs: [
+                    'https://rpc.sepolia.org',
+                    'https://rpc2.sepolia.org',
+                    'https://rpc-sepolia.rockx.com',
+                    'https://sepolia.infura.io/v3/d8ed0bd1de8242d998a1405b6932ab33',
+                    'https://eth-sepolia.public.blastapi.io',
+                    'https://ethereum-sepolia.publicnode.com'
+                ]
+            }
+        };
+
+        function log(message) {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function createRpcItem(rpcUrl, index) {
+            return `
+                <div class="rpc-item" id="rpc-${index}">
+                    <div class="rpc-url">${rpcUrl}</div>
+                    <div class="status" id="status-${index}">未测试</div>
+                </div>
+            `;
+        }
+
+        function updateStatus(index, status, message) {
+            const statusElement = document.getElementById(`status-${index}`);
+            statusElement.className = `status ${status}`;
+            statusElement.textContent = message;
+        }
+
+        async function testRpc(rpcUrl, index) {
+            updateStatus(index, 'testing', '测试中...');
+            log(`开始测试 RPC: ${rpcUrl}`);
+            
+            try {
+                const startTime = Date.now();
+                
+                const response = await fetch(rpcUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        method: 'eth_blockNumber',
+                        params: [],
+                        id: 1
+                    })
+                });
+
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.result) {
+                        const blockNumber = parseInt(data.result, 16);
+                        updateStatus(index, 'connected', `✅ ${responseTime}ms`);
+                        log(`✅ ${rpcUrl} - 成功 (${responseTime}ms) - 区块: ${blockNumber}`);
+                        return { success: true, responseTime, blockNumber };
+                    } else {
+                        updateStatus(index, 'failed', '❌ 响应错误');
+                        log(`❌ ${rpcUrl} - 响应错误: ${JSON.stringify(data)}`);
+                        return { success: false, error: '响应错误' };
+                    }
+                } else {
+                    updateStatus(index, 'failed', `❌ HTTP ${response.status}`);
+                    log(`❌ ${rpcUrl} - HTTP错误: ${response.status}`);
+                    return { success: false, error: `HTTP ${response.status}` };
+                }
+            } catch (error) {
+                updateStatus(index, 'failed', '❌ 连接失败');
+                log(`❌ ${rpcUrl} - 连接失败: ${error.message}`);
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function testNetworkRpcs(networkKey) {
+            const network = networks[networkKey];
+            const container = document.getElementById(`${networkKey}-rpcs`);
+            
+            // 清空并创建RPC项目
+            container.innerHTML = '';
+            network.rpcs.forEach((rpc, index) => {
+                container.innerHTML += createRpcItem(rpc, `${networkKey}-${index}`);
+            });
+
+            log(`\n🔷 开始测试 ${network.name} 网络...`);
+            
+            const results = [];
+            for (let i = 0; i < network.rpcs.length; i++) {
+                const result = await testRpc(network.rpcs[i], `${networkKey}-${i}`);
+                results.push({ rpc: network.rpcs[i], ...result });
+                
+                // 短暂延迟避免请求过快
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // 统计结果
+            const successful = results.filter(r => r.success).length;
+            const total = results.length;
+            log(`📊 ${network.name} 测试完成: ${successful}/${total} 个节点可用`);
+
+            if (successful > 0) {
+                const fastest = results
+                    .filter(r => r.success)
+                    .sort((a, b) => a.responseTime - b.responseTime)[0];
+                log(`⚡ 最快节点: ${fastest.rpc} (${fastest.responseTime}ms)`);
+            }
+
+            return results;
+        }
+
+        async function testMainnet() {
+            await testNetworkRpcs('mainnet');
+        }
+
+        async function testSepolia() {
+            await testNetworkRpcs('sepolia');
+        }
+
+        async function testAllRpcs() {
+            log('🚀 开始测试所有RPC节点...\n');
+            
+            const mainnetResults = await testNetworkRpcs('mainnet');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const sepoliaResults = await testNetworkRpcs('sepolia');
+            
+            const allResults = [...mainnetResults, ...sepoliaResults];
+            const totalSuccessful = allResults.filter(r => r.success).length;
+            const totalRpcs = allResults.length;
+            
+            log(`\n📈 总体统计: ${totalSuccessful}/${totalRpcs} 个RPC节点可用`);
+            log('✅ 测试完成！');
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            log('🌐 RPC节点测试器已就绪');
+            log('点击按钮开始测试网络连接...\n');
+            
+            // 预先创建RPC项目
+            Object.keys(networks).forEach(networkKey => {
+                const network = networks[networkKey];
+                const container = document.getElementById(`${networkKey}-rpcs`);
+                network.rpcs.forEach((rpc, index) => {
+                    container.innerHTML += createRpcItem(rpc, `${networkKey}-${index}`);
+                });
+            });
+        };
+    </script>
+</body>
+</html> 
