@@ -1,13 +1,16 @@
 {
-  "name": "wallet",
-  "displayName": "Wallet",
-  "version": "0.0.1",
-  "description": "wallet-ext",
+  "name": "simple-crypto-wallet",
+  "displayName": "Simple Crypto Wallet",
+  "version": "1.0.0",
+  "description": "A simple and secure EIP-6963 compatible crypto wallet extension",
   "author": "metamode",
   "scripts": {
-    "dev": "plasmo dev",
-    "build": "plasmo build",
-    "package": "plasmo package"
+    "dev": "plasmo dev && node fix-manifest.js",
+    "build": "plasmo build && node fix-manifest.js",
+    "build:clean": "plasmo build",
+    "package": "plasmo package",
+    "test-server": "node dev-server.js",
+    "test": "node dev-server.js"
   },
   "dependencies": {
     "plasmo": "0.90.5",

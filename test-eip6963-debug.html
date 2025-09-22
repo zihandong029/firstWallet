@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EIP-6963 钱包连接测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .wallet-item {
+            border: 2px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .wallet-item:hover {
+            border-color: #3b82f6;
+            background: #f8faff;
+        }
+        .wallet-item.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #6b7280;
+            padding-left: 10px;
+        }
+        .log-entry.info { border-left-color: #3b82f6; }
+        .log-entry.success { border-left-color: #10b981; }
+        .log-entry.error { border-left-color: #ef4444; }
+        .log-entry.warn { border-left-color: #f59e0b; }
+        
+        /* 网络管理样式 */
+        #network-management {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .network-section {
+            margin-bottom: 25px;
+        }
+        
+        .network-section h3 {
+            margin-bottom: 15px;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+        
+        .network-templates {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .network-templates button {
+            background: #10b981;
+            padding: 10px 16px;
+            font-size: 14px;
+        }
+        
+        .network-templates button:hover {
+            background: #059669;
+        }
+        
+        #custom-network-form {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            margin-top: 15px;
+        }
+        
+        #custom-network-form input {
+            width: 100%;
+            margin: 8px 0;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        #custom-network-form input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .switch-section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+        }
+        
+        .switch-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .switch-options button {
+            background: #f59e0b;
+            font-size: 13px;
+            padding: 8px 12px;
+        }
+        
+        .switch-options button:hover {
+            background: #d97706;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 EIP-6963 钱包连接测试</h1>
+        
+        <div id="wallet-detection">
+            <h2>第一步：检测钱包</h2>
+            <button onclick="detectWallets()">🔍 检测可用钱包</button>
+            <div id="wallets-list"></div>
+        </div>
+
+        <div id="wallet-connection">
+            <h2>第二步：连接钱包</h2>
+            <button onclick="connectSelectedWallet()" id="connect-btn" disabled>🔗 连接选中的钱包</button>
+        </div>
+
+        <div id="wallet-interaction">
+            <h2>第三步：钱包交互</h2>
+            <button onclick="getAccounts()" disabled id="accounts-btn">👤 获取账户</button>
+            <button onclick="getChainId()" disabled id="chain-btn">🌐 获取链ID</button>
+            <button onclick="signMessage()" disabled id="sign-btn">✍️ 签名消息</button>
+            <button onclick="addNetwork()" disabled id="add-network-btn">➕ 添加网络</button>
+            <button onclick="switchNetwork()" disabled id="switch-network-btn">🔄 切换网络</button>
+        </div>
+
+        <div id="results">
+            <h2>📊 结果显示</h2>
+            <div id="account-info"></div>
+            <div id="chain-info"></div>
+        </div>
+
+        <!-- 网络管理测试区域 -->
+        <div id="network-management">
+            <h2>🌐 网络管理测试 (EIP-3085)</h2>
+            
+            <div class="network-section">
+                <h3>🚀 预设网络模板</h3>
+                <div class="network-templates">
+                    <button onclick="addGnosisChain()">🟢 添加 Gnosis Chain</button>
+                    <button onclick="addPolygonChain()">🟣 添加 Polygon</button>
+                    <button onclick="addBSCChain()">🟡 添加 BSC</button>
+                    <button onclick="addArbitrumChain()">🔵 添加 Arbitrum</button>
+                    <button onclick="addOptimismChain()">🔴 添加 Optimism</button>
+                    <button onclick="addAvalancheChain()">⚪ 添加 Avalanche</button>
+                    <button onclick="addSolanaDevnetChain()">🟠 添加 Solana Devnet</button>
+                </div>
+            </div>
+
+            <div class="network-section">
+                <h3>⚙️ 自定义网络</h3>
+                <button onclick="showCustomNetworkForm()" id="show-form-btn">➕ 添加自定义网络</button>
+                
+                <div id="custom-network-form" style="display: none;">
+                    <div class="form-group">
+                        <label for="chain-id">链ID *</label>
+                        <input type="text" id="chain-id" placeholder="十六进制格式，如 0x89 或十进制 137">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="chain-name">网络名称 *</label>
+                        <input type="text" id="chain-name" placeholder="如 Polygon Mainnet">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="rpc-url">RPC URL *</label>
+                        <input type="text" id="rpc-url" placeholder="https://polygon-rpc.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="currency-name">货币名称 *</label>
+                        <input type="text" id="currency-name" placeholder="如 Matic Token">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="currency-symbol">货币符号 *</label>
+                        <input type="text" id="currency-symbol" placeholder="如 MATIC">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="currency-decimals">货币精度</label>
+                        <input type="number" id="currency-decimals" placeholder="18" value="18">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="block-explorer">区块浏览器 URL (可选)</label>
+                        <input type="text" id="block-explorer" placeholder="https://polygonscan.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="icon-url">图标 URL (可选)</label>
+                        <input type="text" id="icon-url" placeholder="https://example.com/icon.png">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="hideCustomNetworkForm()">取消</button>
+                        <button type="button" onclick="addCustomNetwork()">添加网络</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="network-section">
+                <h3>🔄 网络切换测试</h3>
+                <div class="switch-section">
+                    <p>测试 wallet_switchEthereumChain 方法:</p>
+                    <div class="switch-options">
+                        <button onclick="switchToChain('0x1')">切换到主网</button>
+                        <button onclick="switchToChain('0xaa36a7')">切换到 Sepolia</button>
+                        <button onclick="switchToChain('0x89')">切换到 Polygon</button>
+                        <button onclick="switchToChain('0x38')">切换到 BSC</button>
+                        <button onclick="switchToChain('0xa4b1')">切换到 Arbitrum</button>
+                        <!-- 新增Solana切换按钮 -->
+                        <button onclick="switchToSolana('mainnet')">切换到 Solana Mainnet</button>
+                        <button onclick="switchToSolana('devnet')">切换到 Solana Devnet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="logs">
+            <h2>📝 详细日志</h2>
+            <button onclick="clearLogs()">🧹 清空日志</button>
+            <div class="log" id="log-container"></div>
+        </div>
+    </div>
+
+    <script>
+        let discoveredWallets = new Map();
+        let selectedWallet = null;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `<span style="color: #6b7280;">[${timestamp}]</span> ${message}`;
+            
+            const logContainer = document.getElementById('log-container');
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('log-container').innerHTML = '';
+        }
+
+        // 监听钱包宣告
+        window.addEventListener("eip6963:announceProvider", (event) => {
+            const { info, provider } = event.detail;
+            log(`🔍 发现钱包: ${info.name} (UUID: ${info.uuid})`, 'success');
+            
+            discoveredWallets.set(info.uuid, { info, provider });
+            displayWallets();
+        });
+
+        // 请求钱包宣告
+        function detectWallets() {
+            log('🔍 开始检测钱包...', 'info');
+            discoveredWallets.clear();
+            
+            // 清空显示
+            document.getElementById('wallets-list').innerHTML = '';
+            
+            // 发送请求事件
+            window.dispatchEvent(new CustomEvent("eip6963:requestProvider"));
+            
+            // 等待一段时间收集钱包
+            setTimeout(() => {
+                if (discoveredWallets.size === 0) {
+                    log('❌ 没有检测到支持 EIP-6963 的钱包', 'warn');
+                } else {
+                    log(`✅ 检测到 ${discoveredWallets.size} 个钱包`, 'success');
+                }
+            }, 1000);
+        }
+
+        function displayWallets() {
+            const walletsList = document.getElementById('wallets-list');
+            walletsList.innerHTML = '';
+
+            for (const [uuid, { info, provider }] of discoveredWallets) {
+                const walletDiv = document.createElement('div');
+                walletDiv.className = 'wallet-item';
+                walletDiv.onclick = () => selectWallet(uuid);
+                
+                walletDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <img src="${info.icon}" alt="${info.name}" style="width: 32px; height: 32px; border-radius: 6px;">
+                        <div>
+                            <div style="font-weight: 600;">${info.name}</div>
+                            <div style="font-size: 12px; color: #6b7280;">UUID: ${uuid}</div>
+                        </div>
+                    </div>
+                `;
+                
+                walletsList.appendChild(walletDiv);
+            }
+        }
+
+        function selectWallet(uuid) {
+            // 清除之前的选择
+            document.querySelectorAll('.wallet-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // 选择新的钱包
+            event.target.closest('.wallet-item').classList.add('selected');
+            selectedWallet = discoveredWallets.get(uuid);
+            
+            log(`👆 选择钱包: ${selectedWallet.info.name}`, 'info');
+            document.getElementById('connect-btn').disabled = false;
+        }
+
+        async function connectSelectedWallet() {
+            if (!selectedWallet) {
+                log('❌ 请先选择一个钱包', 'error');
+                return;
+            }
+
+            try {
+                log(`🔗 正在连接 ${selectedWallet.info.name}...`, 'info');
+                
+                const accounts = await selectedWallet.provider.request({
+                    method: "eth_requestAccounts"
+                });
+                
+                log(`✅ 连接成功! 获得账户: ${accounts.join(', ')}`, 'success');
+                
+                // 启用其他按钮
+                document.getElementById('accounts-btn').disabled = false;
+                document.getElementById('chain-btn').disabled = false;
+                document.getElementById('sign-btn').disabled = false;
+                document.getElementById('add-network-btn').disabled = false;
+                document.getElementById('switch-network-btn').disabled = false;
+                
+                // 显示账户信息
+                document.getElementById('account-info').innerHTML = `
+                    <strong>已连接账户:</strong> ${accounts[0]}<br>
+                    <strong>钱包:</strong> ${selectedWallet.info.name}
+                `;
+                
+                // 获取当前链ID
+                await getChainId();
+                
+            } catch (error) {
+                log(`❌ 连接失败: ${error.message}`, 'error');
+                console.error('连接失败:', error);
+            }
+        }
+
+        async function getAccounts() {
+            if (!selectedWallet) return;
+            
+            try {
+                log('👤 获取账户列表...', 'info');
+                const accounts = await selectedWallet.provider.request({
+                    method: "eth_accounts"
+                });
+                log(`✅ 账户: ${accounts.join(', ')}`, 'success');
+            } catch (error) {
+                log(`❌ 获取账户失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function getChainId() {
+            if (!selectedWallet) return;
+            
+            try {
+                log('🌐 获取链ID...', 'info');
+                const chainId = await selectedWallet.provider.request({
+                    method: "eth_chainId"
+                });
+                log(`✅ 链ID: ${chainId} (${parseInt(chainId, 16)})`, 'success');
+                
+                const networkName = getNetworkName(chainId);
+                document.getElementById('chain-info').innerHTML = `
+                    <strong>当前网络:</strong> ${networkName}<br>
+                    <strong>链ID:</strong> ${chainId} (${parseInt(chainId, 16)})
+                `;
+            } catch (error) {
+                log(`❌ 获取链ID失败: ${error.message}`, 'error');
+            }
+        }
+
+        function getNetworkName(chainId) {
+            const networks = {
+                '0x1': 'Ethereum Mainnet',
+                '0xaa36a7': 'Sepolia Testnet',
+                '0x89': 'Polygon',
+                '0x38': 'BSC',
+                '0xa4b1': 'Arbitrum One',
+                '0xa': 'Optimism',
+                '0xa86a': 'Avalanche',
+                '0x64': 'Gnosis Chain'
+            };
+            return networks[chainId] || '未知网络';
+        }
+
+        async function signMessage() {
+            if (!selectedWallet) return;
+            
+            try {
+                log('✍️ 请求签名消息...', 'info');
+                const accounts = await selectedWallet.provider.request({
+                    method: "eth_accounts"
+                });
+                
+                if (accounts.length === 0) {
+                    log('❌ 没有可用账户', 'error');
+                    return;
+                }
+                
+                const message = "Hello from EIP-6963 test!";
+                const signature = await selectedWallet.provider.request({
+                    method: "personal_sign",
+                    params: [message, accounts[0]]
+                });
+                
+                log(`✅ 签名成功: ${signature}`, 'success');
+            } catch (error) {
+                log(`❌ 签名失败: ${error.message}`, 'error');
+            }
+        }
+
+        // ==================== 网络管理功能 ====================
+
+        async function addNetwork() {
+            if (!selectedWallet) return;
+            
+            try {
+                log('🌐 测试添加网络功能...', 'info');
+                await addGnosisChain();
+            } catch (error) {
+                log(`❌ 添加网络失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 预设网络配置
+        async function addGnosisChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const gnosisConfig = {
+                chainId: '0x64', // 100
+                chainName: 'Gnosis Chain',
+                rpcUrls: ['https://rpc.gnosischain.com'],
+                nativeCurrency: {
+                    name: 'xDAI',
+                    symbol: 'xDAI',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://gnosisscan.io'],
+                iconUrls: ['https://xdaichain.com/fake/example/url/xdai.svg']
+            };
+            
+            try {
+                log('🟢 请求添加 Gnosis Chain...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [gnosisConfig]
+                });
+                log('✅ Gnosis Chain 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Gnosis Chain 失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addPolygonChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const polygonConfig = {
+                chainId: '0x89', // 137
+                chainName: 'Polygon',
+                rpcUrls: ['https://polygon-rpc.com'],
+                nativeCurrency: {
+                    name: 'MATIC',
+                    symbol: 'MATIC',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://polygonscan.com'],
+                iconUrls: ['https://wallet-asset.matic.network/img/tokens/matic.svg']
+            };
+            
+            try {
+                log('🟣 请求添加 Polygon...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [polygonConfig]
+                });
+                log('✅ Polygon 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Polygon 失败: ${error.message}`, 'error');
+            }
+        }
+
+        // solana测试链
+        async function addSolanaDevnetChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+
+            const solanaConfig = {
+                chainId: '0x1', // 1
+                chainName: 'Solana Devnet',
+                rpcUrls: ['https://api.devnet.solana.com'],
+                nativeCurrency: {
+                    name: 'SOL',
+                    symbol: 'SOL',
+                    decimals: 9
+                },
+                blockExplorerUrls: ['https://explorer.solana.com'],
+                iconUrls: ['https://solana.com/favicon.ico']
+            };
+            
+            try {
+                log('🟣 请求添加 Solana Devnet...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [solanaConfig]
+                });
+                log('✅ Solana Devnet 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Solana Devnet 失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addBSCChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const bscConfig = {
+                chainId: '0x38', // 56
+                chainName: 'BNB Smart Chain',
+                rpcUrls: ['https://bsc-dataseed.binance.org'],
+                nativeCurrency: {
+                    name: 'BNB',
+                    symbol: 'BNB',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://bscscan.com'],
+                iconUrls: ['https://s2.coinmarketcap.com/static/img/coins/64x64/1839.png']
+            };
+            
+            try {
+                log('🟡 请求添加 BNB Smart Chain...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [bscConfig]
+                });
+                log('✅ BNB Smart Chain 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 BNB Smart Chain 失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addArbitrumChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const arbitrumConfig = {
+                chainId: '0xa4b1', // 42161
+                chainName: 'Arbitrum One',
+                rpcUrls: ['https://arb1.arbitrum.io/rpc'],
+                nativeCurrency: {
+                    name: 'Ethereum',
+                    symbol: 'ETH',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://arbiscan.io'],
+                iconUrls: ['https://bridge.arbitrum.io/logo.png']
+            };
+            
+            try {
+                log('🔵 请求添加 Arbitrum One...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [arbitrumConfig]
+                });
+                log('✅ Arbitrum One 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Arbitrum One 失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addOptimismChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const optimismConfig = {
+                chainId: '0xa', // 10
+                chainName: 'Optimism',
+                rpcUrls: ['https://mainnet.optimism.io'],
+                nativeCurrency: {
+                    name: 'Ethereum',
+                    symbol: 'ETH',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://optimistic.etherscan.io'],
+                iconUrls: ['https://ethereum-optimism.github.io/optimism-tutorial/assets/optimism.svg']
+            };
+            
+            try {
+                log('🔴 请求添加 Optimism...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [optimismConfig]
+                });
+                log('✅ Optimism 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Optimism 失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function addAvalancheChain() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const avalancheConfig = {
+                chainId: '0xa86a', // 43114
+                chainName: 'Avalanche C-Chain',
+                rpcUrls: ['https://api.avax.network/ext/bc/C/rpc'],
+                nativeCurrency: {
+                    name: 'Avalanche',
+                    symbol: 'AVAX',
+                    decimals: 18
+                },
+                blockExplorerUrls: ['https://snowtrace.io'],
+                iconUrls: ['https://images.ctfassets.net/gcj8jwzm6086/5VHupNKwnDYJvqMENeV7iJ/fdd6326b7a82c8388e4ee9d4be7062d4/avalanche-avax-logo.svg']
+            };
+            
+            try {
+                log('⚪ 请求添加 Avalanche C-Chain...', 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [avalancheConfig]
+                });
+                log('✅ Avalanche C-Chain 添加成功!', 'success');
+            } catch (error) {
+                log(`❌ 添加 Avalanche C-Chain 失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 显示/隐藏自定义网络表单
+        function showCustomNetworkForm() {
+            const form = document.getElementById('custom-network-form');
+            form.style.display = 'block';
+            document.getElementById('show-form-btn').textContent = '❌ 取消添加';
+            document.getElementById('show-form-btn').onclick = hideCustomNetworkForm;
+        }
+
+        function hideCustomNetworkForm() {
+            const form = document.getElementById('custom-network-form');
+            form.style.display = 'none';
+            document.getElementById('show-form-btn').textContent = '➕ 添加自定义网络';
+            document.getElementById('show-form-btn').onclick = showCustomNetworkForm;
+            
+            // 清空表单
+            clearCustomNetworkForm();
+        }
+
+        function clearCustomNetworkForm() {
+            document.getElementById('chain-id').value = '';
+            document.getElementById('chain-name').value = '';
+            document.getElementById('rpc-url').value = '';
+            document.getElementById('currency-name').value = '';
+            document.getElementById('currency-symbol').value = '';
+            document.getElementById('currency-decimals').value = '18';
+            document.getElementById('block-explorer').value = '';
+            document.getElementById('icon-url').value = '';
+        }
+
+        // 添加自定义网络
+        async function addCustomNetwork() {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const chainId = document.getElementById('chain-id').value;
+            const chainName = document.getElementById('chain-name').value;
+            const rpcUrl = document.getElementById('rpc-url').value;
+            const currencyName = document.getElementById('currency-name').value;
+            const currencySymbol = document.getElementById('currency-symbol').value;
+            const currencyDecimals = parseInt(document.getElementById('currency-decimals').value) || 18;
+            const blockExplorer = document.getElementById('block-explorer').value;
+            const iconUrl = document.getElementById('icon-url').value;
+            
+            if (!chainId || !chainName || !rpcUrl || !currencyName || !currencySymbol) {
+                log('❌ 请填写所有必填字段', 'error');
+                return;
+            }
+            
+            // 处理链ID格式
+            let formattedChainId = chainId;
+            if (!chainId.startsWith('0x')) {
+                formattedChainId = `0x${parseInt(chainId).toString(16)}`;
+            }
+            
+            const customConfig = {
+                chainId: formattedChainId,
+                chainName: chainName,
+                rpcUrls: [rpcUrl],
+                nativeCurrency: {
+                    name: currencyName,
+                    symbol: currencySymbol,
+                    decimals: currencyDecimals
+                }
+            };
+            
+            if (blockExplorer) {
+                customConfig.blockExplorerUrls = [blockExplorer];
+            }
+            
+            if (iconUrl) {
+                customConfig.iconUrls = [iconUrl];
+            }
+            
+            try {
+                log(`⚙️ 请求添加自定义网络: ${chainName}...`, 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [customConfig]
+                });
+                log(`✅ 自定义网络 ${chainName} 添加成功!`, 'success');
+                
+                // 清空表单并隐藏
+                hideCustomNetworkForm();
+            } catch (error) {
+                log(`❌ 添加自定义网络失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 切换网络功能
+        async function switchNetwork() {
+            if (!selectedWallet) return;
+            
+            try {
+                log('🔄 测试切换网络 (切换到 Polygon)...', 'info');
+                await switchToChain('0x89'); // Polygon
+            } catch (error) {
+                log(`❌ 切换网络失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function switchToChain(chainId) {
+            if (!selectedWallet) {
+                log('❌ 请先连接钱包', 'error');
+                return;
+            }
+            
+            const networkName = getNetworkName(chainId);
+            
+            try {
+                log(`🔄 尝试切换到 ${networkName} (${chainId})...`, 'info');
+                await selectedWallet.provider.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: chainId }]
+                });
+                log(`✅ 成功切换到 ${networkName}!`, 'success');
+                
+                // 更新当前链信息
+                await getChainId();
+            } catch (error) {
+                if (error.code === 4902) {
+                    log(`⚠️ 网络 ${networkName} 不存在，请先添加该网络`, 'warn');
+                } else {
+                    log(`❌ 切换到 ${networkName} 失败: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // Solana 网络配置
+        const SOLANA_NETWORKS = {
+            mainnet: {
+                name: "Solana Mainnet",
+                endpoint: "https://api.mainnet-beta.solana.com"
+            },
+            devnet: {
+                name: "Solana Devnet",
+                endpoint: "https://api.devnet.solana.com"
+            },
+            testnet: {
+                name: "Solana Testnet",
+                endpoint: "https://api.testnet.solana.com"
+            }
+        };
+
+        // 检查是否有 Solana 钱包（如 Phantom）
+        function getSolanaProvider() {
+            if ('solana' in window) {
+                return window.solana;
+            }
+            return null;
+        }
+
+        // 切换到 Solana 网络的测试功能
+        async function switchToSolana(networkKey = 'mainnet') {
+            const provider = getSolanaProvider();
+            const network = SOLANA_NETWORKS[networkKey];
+            if (!provider) {
+                log('❌ 未检测到 Solana 钱包（如 Phantom）', 'error');
+                return;
+            }
+            try {
+                log(`🔄 尝试连接 ${network.name}...`, 'info');
+                // Phantom 钱包支持 connect 方法
+                const resp = await provider.connect();
+                log(`✅ 已连接 Solana 钱包: ${resp.publicKey.toString()}`, 'success');
+                log(`🌐 当前网络: ${network.name} (${network.endpoint})`, 'info');
+            } catch (err) {
+                log(`❌ 连接 Solana 钱包失败: ${err.message}`, 'error');
+            }
+        }
+
+        // 页面加载完成后自动检测
+        window.addEventListener('load', () => {
+            log('📄 页面加载完成，开始 EIP-6963 测试', 'info');
+            setTimeout(detectWallets, 500);
+        });
+    </script>
+</body>
+</html>

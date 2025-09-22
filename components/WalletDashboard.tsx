@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react"
 
+import type { Transaction } from "~lib/transaction-history"
 import { WalletManager, type Account, type WalletState } from "~lib/wallet"
 
 interface WalletDashboardProps {
@@ -29,6 +30,10 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
     rpcUrl?: string
   }>({ connected: false })
   const [testingNetwork, setTestingNetwork] = useState(false)
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false)
+  const [switchingNetwork, setSwitchingNetwork] = useState(false)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
 
   const walletManager = WalletManager.getInstance()
 
@@ -36,12 +41,23 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
     loadWalletData()
   }, [])
 
+  // 当切换到活动标签时加载交易历史
+  useEffect(() => {
+    if (activeTab === "activity" && walletState && transactions.length === 0) {
+      loadTransactionHistory()
+    }
+  }, [activeTab, walletState])
+
   const loadWalletData = async () => {
     try {
       const state = await walletManager.getWalletState()
       if (state) {
         setWalletState(state)
-        await Promise.all([loadBalance(), testNetworkConnection()])
+        await Promise.all([
+          loadBalance(),
+          testNetworkConnection(),
+          loadTransactionHistory() // 添加交易历史加载
+        ])
       }
     } catch (err) {
       console.error("加载钱包数据失败:", err)
@@ -51,14 +67,16 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
   }
 
   const loadBalance = async () => {
-    // try {
-    //   const bal = await walletManager.getBalance()
-    //   setBalance(bal)
-    // } catch (err) {
-    //   console.error('获取余额失败:', err)
-    //   setBalance('0')
-    //   setError('获取余额失败，请检查网络连接')
-    // }
+    try {
+      console.log("🔍 [余额查询] 开始获取余额...")
+      const bal = await walletManager.getBalance()
+      console.log("✅ [余额查询] 获取余额成功:", bal)
+      setBalance(bal)
+    } catch (err) {
+      console.error("❌ [余额查询] 获取余额失败:", err)
+      setBalance("0")
+      setError("获取余额失败，请检查网络连接")
+    }
   }
 
   const testNetworkConnection = async () => {
@@ -85,6 +103,23 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
       setError("网络测试失败")
     } finally {
       setTestingNetwork(false)
+    }
+  }
+
+  const loadTransactionHistory = async () => {
+    if (activeTab !== "activity") return // 只在活动页面加载
+
+    setLoadingTransactions(true)
+    try {
+      console.log("🔍 [交易历史] 开始获取交易记录...")
+      const txHistory = await walletManager.getTransactionHistory({ limit: 20 })
+      console.log("✅ [交易历史] 获取成功:", txHistory.length, "条记录")
+      setTransactions(txHistory)
+    } catch (err) {
+      console.error("❌ [交易历史] 获取失败:", err)
+      setError("获取交易历史失败: " + (err as Error).message)
+    } finally {
+      setLoadingTransactions(false)
     }
   }
 
@@ -142,7 +177,42 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
     console.log("手动刷新余额和网络状态")
     setError("")
     setSuccess("")
-    await Promise.all([loadBalance(), testNetworkConnection()])
+    await Promise.all([
+      loadBalance(),
+      testNetworkConnection(),
+      loadTransactionHistory() // 也刷新交易历史
+    ])
+  }
+
+  const handleSwitchNetwork = async (chainId: number) => {
+    if (switchingNetwork) return
+
+    setSwitchingNetwork(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      console.log("🔄 切换到网络 Chain ID:", chainId)
+
+      const success = await walletManager.switchNetwork(chainId)
+      if (success) {
+        setSuccess("✅ 网络切换成功")
+        setShowNetworkSelector(false)
+        // 重新加载钱包数据
+        await loadWalletData()
+      }
+    } catch (err) {
+      console.error("切换网络失败:", err)
+      setError(
+        `切换网络失败: ${err instanceof Error ? err.message : "未知错误"}`
+      )
+    } finally {
+      setSwitchingNetwork(false)
+      setTimeout(() => {
+        setError("")
+        setSuccess("")
+      }, 3000)
+    }
   }
 
   const formatAddress = (address: string) => {
@@ -186,10 +256,105 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
   return (
     <div className="dashboard">
+      {/* 网络选择器弹窗 */}
+      {showNetworkSelector && (
+        <div
+          className="network-selector-overlay"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+          <div
+            className="network-selector-modal"
+            style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              maxWidth: "400px",
+              width: "90%",
+              maxHeight: "80vh",
+              overflowY: "auto"
+            }}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-slate-800">选择网络</h3>
+              <button
+                onClick={() => setShowNetworkSelector(false)}
+                className="text-slate-500 hover:text-slate-700"
+                style={{ fontSize: "20px" }}>
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {walletState.networks.map((network, index) => (
+                <button
+                  key={network.chainId}
+                  onClick={() => handleSwitchNetwork(network.chainId)}
+                  disabled={
+                    switchingNetwork ||
+                    network.chainId === currentNetwork.chainId
+                  }
+                  className={`w-full p-3 rounded-lg border text-left transition-colors ${
+                    network.chainId === currentNetwork.chainId
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold">{network.name}</div>
+                      <div className="text-sm text-slate-500">
+                        Chain ID: {network.chainId} • {network.symbol}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {network.chainId === currentNetwork.chainId && (
+                        <span className="text-green-500 text-sm">✓ 当前</span>
+                      )}
+                      {switchingNetwork && (
+                        <div className="text-sm text-slate-500">切换中...</div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="dashboard-header">
         <div className="header-top">
-          <h1 className="wallet-title">💎 我的钱包</h1>
+          <h1 className="wallet-title">我的钱包1</h1>
           <div className="flex items-center gap-2">
+            {/* 网络选择器 */}
+            <button
+              className="network-selector-button"
+              onClick={() => setShowNetworkSelector(!showNetworkSelector)}
+              title="选择网络"
+              style={{
+                background: "rgba(255, 255, 255, 0.2)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+                borderRadius: "8px",
+                padding: "4px 8px",
+                color: "white",
+                fontSize: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px"
+              }}>
+              🌐 {currentNetwork?.name || "未知网络"}
+              <span style={{ fontSize: "10px" }}>▼</span>
+            </button>
+
             {/* 网络状态指示器 */}
             <div
               className={`w-3 h-3 rounded-full ${networkStatus.connected ? "bg-green-400" : "bg-red-400"}`}
@@ -225,7 +390,7 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
             <span className="ml-2 text-xs">📋</span>
           </div>
           <div className="account-balance">
-            {parseFloat(balance).toFixed(4)} {currentNetwork?.symbol || "ETH"}
+            {parseFloat(balance).toFixed(6)} {currentNetwork?.symbol || "ETH"}
           </div>
           <div className="balance-usd">≈ $0.00 USD</div>
         </div>
@@ -416,16 +581,129 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
         {activeTab === "activity" && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              📊 交易记录
-            </h3>
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📝</div>
-              <div className="text-slate-500 font-medium">暂无交易记录</div>
-              <div className="text-slate-400 text-sm mt-2">
-                您的交易历史将在这里显示
-              </div>
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                📊 交易记录
+              </h3>
+              <button
+                className="btn btn-secondary btn-small"
+                onClick={loadTransactionHistory}
+                disabled={loadingTransactions}>
+                {loadingTransactions ? "🔄 加载中..." : "🔄 刷新"}
+              </button>
             </div>
+
+            {loadingTransactions ? (
+              <div className="text-center py-8">
+                <div className="spinner mx-auto mb-4"></div>
+                <div className="text-slate-500">正在获取交易记录...</div>
+              </div>
+            ) : transactions.length > 0 ? (
+              <div className="space-y-3">
+                {transactions.map((tx, index) => (
+                  <div
+                    key={`${tx.hash}-${index}`}
+                    className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                            tx.type === "send"
+                              ? "bg-red-100 text-red-600"
+                              : "bg-green-100 text-green-600"
+                          }`}>
+                          {tx.type === "send" ? "📤" : "📥"}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-800">
+                            {tx.type === "send" ? "发送" : "接收"} {tx.symbol}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {new Date(tx.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className={`font-semibold ${
+                            tx.type === "send"
+                              ? "text-red-600"
+                              : "text-green-600"
+                          }`}>
+                          {tx.type === "send" ? "-" : "+"}
+                          {parseFloat(tx.valueFormatted).toFixed(6)} {tx.symbol}
+                        </div>
+                        <div
+                          className={`text-xs px-2 py-1 rounded ${
+                            tx.status === "success"
+                              ? "bg-green-100 text-green-700"
+                              : tx.status === "failed"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-yellow-100 text-yellow-700"
+                          }`}>
+                          {tx.status === "success"
+                            ? "成功"
+                            : tx.status === "failed"
+                              ? "失败"
+                              : "待确认"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-slate-500 mb-1">发送方</div>
+                        <div className="font-mono text-xs">
+                          {formatAddress(tx.from)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500 mb-1">接收方</div>
+                        <div className="font-mono text-xs">
+                          {formatAddress(tx.to)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                      <div className="text-xs text-slate-500">
+                        区块: {tx.blockNumber}
+                      </div>
+                      {tx.explorerUrl && (
+                        <a
+                          href={tx.explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                          查看详情 🔗
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {transactions.length >= 20 && (
+                  <div className="text-center py-4">
+                    <button className="btn btn-secondary btn-small">
+                      加载更多
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📝</div>
+                <div className="text-slate-500 font-medium">暂无交易记录</div>
+                <div className="text-slate-400 text-sm mt-2">
+                  您的交易历史将在这里显示
+                </div>
+                <button
+                  className="btn btn-secondary btn-small mt-4"
+                  onClick={loadTransactionHistory}>
+                  🔄 重新加载
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -444,7 +722,7 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto">
               <div className="input-group">
                 <label className="input-label">📍 收款地址</label>
                 <input
@@ -479,7 +757,26 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
                   可用余额: {balance} {currentNetwork?.symbol || "ETH"}
                 </div>
               </div>
-
+              <button
+                className="btn btn-primary"
+                onClick={handleSend}
+                disabled={
+                  sending ||
+                  !sendForm.to ||
+                  !sendForm.amount ||
+                  !networkStatus.connected
+                }>
+                {sending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="spinner"></div>
+                    发送中...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    🚀 发送交易
+                  </span>
+                )}
+              </button>
               <div className="gas-settings">
                 <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
                   ⛽ Gas 设置 (可选)
@@ -511,27 +808,6 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({
                   </div>
                 </div>
               </div>
-
-              <button
-                className="btn btn-primary"
-                onClick={handleSend}
-                disabled={
-                  sending ||
-                  !sendForm.to ||
-                  !sendForm.amount ||
-                  !networkStatus.connected
-                }>
-                {sending ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="spinner"></div>
-                    发送中...
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center gap-2">
-                    🚀 发送交易
-                  </span>
-                )}
-              </button>
 
               {/* 交易预览 */}
               {sendForm.to && sendForm.amount && (

@@ -1,7 +1,9 @@
 // 简化版钱包实现，减少Node.js依赖
-import { ethers, Wallet, HDNodeWallet, JsonRpcProvider } from 'ethers'
+import { ethers, Wallet, HDNodeWallet, JsonRpcProvider, formatEther, parseEther, parseUnits } from 'ethers'
 import CryptoJS from 'crypto-js'
 import * as bip39 from 'bip39'
+import { MultiChainTransactionManager } from './multi-chain-transaction-manager'
+import type { Transaction, TokenTransfer, TokenBalance, QueryOptions } from './transaction-history'
 
 export interface Account {
   address: string
@@ -32,12 +34,60 @@ export class WalletManager {
   private static instance: WalletManager
   private password: string = ''
   private providers: Map<string, JsonRpcProvider> = new Map() // 缓存provider
+  private unlockTimeout: number = 30 * 60 * 1000 // 30分钟自动锁定
+  private transactionManager: MultiChainTransactionManager // 交易历史管理器
 
   static getInstance(): WalletManager {
     if (!WalletManager.instance) {
       WalletManager.instance = new WalletManager()
+      // 初始化时检查解锁状态
+      WalletManager.instance.initializeUnlockState()
+      // 初始化交易历史管理器
+      WalletManager.instance.initializeTransactionManager()
     }
     return WalletManager.instance
+  }
+
+  // 初始化解锁状态
+  private async initializeUnlockState(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get(['unlockInfo'])
+      if (result.unlockInfo) {
+        const { password, expiresAt } = result.unlockInfo
+        const now = Date.now()
+        
+        if (expiresAt > now) {
+          // 解锁状态仍然有效
+          this.password = password
+          console.log('🔓 钱包解锁状态已恢复')
+          
+          // 设置自动锁定定时器
+          const timeLeft = expiresAt - now
+          setTimeout(() => {
+            this.autoLockWallet()
+          }, timeLeft)
+        } else {
+          // 解锁已过期，清理
+          await chrome.storage.local.remove(['unlockInfo'])
+          console.log('🔒 钱包解锁已过期')
+        }
+      }
+    } catch (error) {
+      console.error('初始化解锁状态失败:', error)
+    }
+  }
+
+  // 确保解锁状态已初始化
+  private async ensureUnlockStateInitialized(): Promise<void> {
+    if (!this.password) {
+      await this.initializeUnlockState()
+    }
+  }
+
+  // 自动锁定钱包
+  private async autoLockWallet(): Promise<void> {
+    console.log('⏰ 钱包自动锁定')
+    await this.lockWallet()
   }
 
   // 获取可用的RPC provider
@@ -226,10 +276,27 @@ export class WalletManager {
       const walletState = await this.loadWallet(password)
       if (walletState) {
         this.password = password
+        
+        // 保存解锁状态到storage，30分钟后过期
+        const expiresAt = Date.now() + this.unlockTimeout
+        await chrome.storage.local.set({
+          unlockInfo: {
+            password,
+            expiresAt
+          }
+        })
+        
+        // 设置自动锁定定时器
+        setTimeout(() => {
+          this.autoLockWallet()
+        }, this.unlockTimeout)
+        
+        console.log('🔓 钱包已解锁，将在30分钟后自动锁定')
         return true
       }
       return false
     } catch (error) {
+      console.error('解锁钱包失败:', error)
       return false
     }
   }
@@ -238,19 +305,62 @@ export class WalletManager {
   async lockWallet(): Promise<void> {
     this.password = ''
     this.providers.clear() // 清除provider缓存
+    
+    // 清除保存的解锁状态
+    await chrome.storage.local.remove(['unlockInfo'])
+    
     const walletState = await this.getWalletState()
     if (walletState) {
       walletState.isLocked = true
       await chrome.storage.local.set({ walletState })
     }
+    
+    console.log('🔒 钱包已锁定')
   }
 
   // 获取钱包状态
   async getWalletState(): Promise<WalletState | null> {
-    if (!this.password) {
+    // 检查钱包是否存在
+    const walletExists = await this.walletExists()
+    if (!walletExists) {
       return null
     }
-    return await this.loadWallet(this.password)
+    
+    // 如果没有密码（钱包被锁定），返回锁定状态
+    if (!this.password) {
+      // 返回一个表示锁定状态的基本对象
+      return {
+        isLocked: true,
+        accounts: [],
+        currentAccount: 0,
+        networks: this.getDefaultNetworks(),
+        currentNetwork: 0
+      }
+    }
+    
+    // 钱包已解锁，延长解锁时间（表示用户活跃）
+    await this.extendUnlockTime()
+    
+    // 钱包已解锁，加载完整状态
+    try {
+      const walletState = await this.loadWallet(this.password)
+      if (walletState) {
+        walletState.isLocked = false
+      }
+      return walletState
+    } catch (error) {
+      console.error('加载钱包状态失败:', error)
+      // 如果加载失败，可能是密码错误，返回锁定状态
+      this.password = '' // 清除无效密码
+      await chrome.storage.local.remove(['unlockInfo'])
+      return {
+        isLocked: true,
+        accounts: [],
+        currentAccount: 0,
+        networks: this.getDefaultNetworks(),
+        currentNetwork: 0
+      }
+    }
   }
 
   // 添加新账户 - 简化版本，只能通过助记词派生
@@ -336,10 +446,11 @@ export class WalletManager {
     try {
       const provider = await this.getWorkingProvider(network)
       const balance = await provider.getBalance(targetAddress)
-      return ethers.formatEther(balance)
+      console.log("🔍 [余额查询] 获取余额成功:", balance)
+      return formatEther(balance)
     } catch (error) {
-      console.error('获取余额失败:', error)
-      return '0' // 如果获取失败，返回 0
+      console.error("❌ [余额查询] 获取余额失败:", error)
+      return "0" // 如果获取失败，返回 0
     }
   }
 
@@ -359,9 +470,9 @@ export class WalletManager {
 
       const transaction = {
         to,
-        value: ethers.parseEther(amount),
+        value: parseEther(amount),
         gasLimit: gasLimit ? BigInt(gasLimit) : 21000n,
-        gasPrice: gasPrice ? ethers.parseUnits(gasPrice, 'gwei') : undefined
+        gasPrice: gasPrice ? parseUnits(gasPrice, 'gwei') : undefined
       }
 
       const tx = await wallet.sendTransaction(transaction)
@@ -446,7 +557,7 @@ export class WalletManager {
           'https://ethereum-sepolia.publicnode.com'
         ],
         chainId: 11155111,
-        symbol: 'SEP',
+        symbol: 'SepoliaETH',
         blockExplorerUrl: 'https://sepolia.etherscan.io',
         currentRpcIndex: 0
       }
@@ -615,4 +726,362 @@ export class WalletManager {
       throw new Error(`助记词转种子失败: ${(error as Error).message}`)
     }
   }
+
+  // 延长解锁时间（用户活跃时调用）
+  async extendUnlockTime(): Promise<void> {
+    if (this.password) {
+      const expiresAt = Date.now() + this.unlockTimeout
+      await chrome.storage.local.set({
+        unlockInfo: {
+          password: this.password,
+          expiresAt
+        }
+      })
+      console.log('🔄 解锁时间已延长')
+    }
+  }
+
+  // 检查钱包是否已初始化（是否有加密的钱包数据）
+  async isInitialized(): Promise<boolean> {
+    try {
+      const result = await chrome.storage.local.get(['encryptedWallet'])
+      return !!result.encryptedWallet
+    } catch (error) {
+      console.error('检查钱包初始化状态失败:', error)
+      return false
+    }
+  }
+
+  // 检查钱包是否已解锁
+  isUnlocked(): boolean {
+    return !!this.password
+  }
+
+  // 异步版本的 isUnlocked 方法，用于兼容 background.ts
+  async isUnlockedAsync(): Promise<boolean> {
+    // 确保初始化状态已加载
+    await this.ensureUnlockStateInitialized()
+    console.log('🔍 [WalletManager] isUnlockedAsync - password exists:', !!this.password)
+    return this.isUnlocked()
+  }
+
+  // 获取当前钱包状态
+  async getState(): Promise<WalletState> {
+    if (!this.isUnlocked()) {
+      throw new Error('Wallet is locked. Please unlock first.')
+    }
+
+    const walletState = await this.loadWallet(this.password)
+    if (!walletState) {
+      throw new Error('Wallet not found. Please create or import a wallet first.')
+    }
+
+    return walletState
+  }
+
+  // 网络切换相关方法
+
+  // 切换到指定网络
+  async switchNetwork(chainId: number): Promise<boolean> {
+    try {
+      console.log(`🔄 [WalletManager] 切换到网络 Chain ID: ${chainId}`)
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      // 查找目标网络
+      const networkIndex = walletState.networks.findIndex(n => n.chainId === chainId)
+      if (networkIndex === -1) {
+        throw new Error(`不支持的网络 Chain ID: ${chainId}`)
+      }
+
+      // 测试网络连接
+      const network = walletState.networks[networkIndex]
+      try {
+        await this.getWorkingProvider(network)
+        console.log(`✅ [WalletManager] 网络连接测试成功: ${network.name}`)
+      } catch (error) {
+        console.warn(`⚠️ [WalletManager] 网络连接测试失败: ${network.name}`, error)
+        // 即使连接测试失败也继续切换，让用户知道可能有连接问题
+      }
+
+      // 更新当前网络
+      walletState.currentNetwork = networkIndex
+      await this.saveWallet(walletState, this.password)
+      
+      console.log(`✅ [WalletManager] 成功切换到网络: ${network.name} (Chain ID: ${chainId})`)
+      return true
+    } catch (error) {
+      console.error('❌ [WalletManager] 切换网络失败:', error)
+      throw error
+    }
+  }
+
+  // 添加自定义网络
+  async addNetwork(network: Omit<Network, 'currentRpcIndex'>): Promise<boolean> {
+    try {
+      console.log(`🔄 [WalletManager] 添加自定义网络: ${network.name}`)
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      // 检查网络是否已存在
+      const existingNetwork = walletState.networks.find(n => n.chainId === network.chainId)
+      if (existingNetwork) {
+        throw new Error(`网络已存在: ${existingNetwork.name} (Chain ID: ${network.chainId})`)
+      }
+
+      // 验证网络参数
+      if (!network.name || !network.rpcUrls || network.rpcUrls.length === 0 || !network.chainId) {
+        throw new Error('网络参数不完整')
+      }
+
+      // 测试网络连接
+      const networkWithIndex: Network = { ...network, currentRpcIndex: 0 }
+      try {
+        await this.getWorkingProvider(networkWithIndex)
+        console.log(`✅ [WalletManager] 自定义网络连接测试成功: ${network.name}`)
+      } catch (error) {
+        console.warn(`⚠️ [WalletManager] 自定义网络连接测试失败: ${network.name}`, error)
+        throw new Error(`无法连接到网络 ${network.name}: ${(error as Error).message}`)
+      }
+
+      // 添加网络
+      walletState.networks.push(networkWithIndex)
+      await this.saveWallet(walletState, this.password)
+      
+      console.log(`✅ [WalletManager] 成功添加自定义网络: ${network.name}`)
+      return true
+    } catch (error) {
+      console.error('❌ [WalletManager] 添加网络失败:', error)
+      throw error
+    }
+  }
+
+  // 获取当前网络信息
+  async getCurrentNetwork(): Promise<Network | null> {
+    try {
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        return null
+      }
+      
+      return walletState.networks[walletState.currentNetwork] || null
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取当前网络失败:', error)
+      return null
+    }
+  }
+
+  // 获取所有可用网络
+  async getAllNetworks(): Promise<Network[]> {
+    try {
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        return this.getDefaultNetworks()
+      }
+      
+      return walletState.networks
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取网络列表失败:', error)
+      return this.getDefaultNetworks()
+    }
+  }
+
+  // 移除自定义网络
+  async removeNetwork(chainId: number): Promise<boolean> {
+    try {
+      console.log(`🔄 [WalletManager] 移除网络 Chain ID: ${chainId}`)
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      // 查找目标网络
+      const networkIndex = walletState.networks.findIndex(n => n.chainId === chainId)
+      if (networkIndex === -1) {
+        throw new Error(`网络不存在 Chain ID: ${chainId}`)
+      }
+
+      // 不允许删除默认网络（以太坊主网和测试网）
+      const defaultChainIds = [1, 11155111] // Mainnet and Sepolia
+      if (defaultChainIds.includes(chainId)) {
+        throw new Error('不能删除默认网络')
+      }
+
+      // 如果当前使用的是要删除的网络，切换到主网
+      if (walletState.currentNetwork === networkIndex) {
+        walletState.currentNetwork = 0 // 切换到第一个网络（通常是主网）
+      } else if (walletState.currentNetwork > networkIndex) {
+        // 调整当前网络索引
+        walletState.currentNetwork--
+      }
+
+      // 移除网络
+      walletState.networks.splice(networkIndex, 1)
+      await this.saveWallet(walletState, this.password)
+      
+      console.log(`✅ [WalletManager] 成功移除网络 Chain ID: ${chainId}`)
+      return true
+    } catch (error) {
+      console.error('❌ [WalletManager] 移除网络失败:', error)
+      throw error
+    }
+  }
+
+  // 初始化交易历史管理器
+  private initializeTransactionManager(): void {
+    this.transactionManager = new MultiChainTransactionManager({
+      etherscanApiKey: 'YourApiKeyToken', // 建议从环境变量获取
+      moralisApiKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjdiNjRkYmY5LTFhNWItNGY0Yy1hMzhhLWJmOWYzNDQ0NDM5YyIsIm9yZ0lkIjoiNDY0NzYzIiwidXNlcklkIjoiNDc4MTQwIiwidHlwZUlkIjoiNzMzNjQyNGUtZWMwYS00OWIzLTllYWMtMjYyMTM5MWEyOGM1IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NTUwMDY5ODgsImV4cCI6NDkxMDc2Njk4OH0.qjOqRD3pdF8jjZ_hQW3ZR_7Jfx3UEQYqRN0JaDBclXQ', // 建议从环境变量获取
+      enableFallback: true
+    })
+    console.log('✅ [WalletManager] 交易历史管理器已初始化')
+  }
+
+  // ======================== 交易历史相关方法 ========================
+
+  // 获取当前账户的交易历史
+  async getTransactionHistory(options: QueryOptions = {}): Promise<Transaction[]> {
+    try {
+      console.log('🔍 [WalletManager] 获取交易历史...')
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      const currentAccount = walletState.accounts[walletState.currentAccount]
+      const currentNetwork = walletState.networks[walletState.currentNetwork]
+      
+      return await this.transactionManager.getTransactions(
+        currentNetwork.chainId,
+        currentAccount.address,
+        options
+      )
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取交易历史失败:', error)
+      throw error
+    }
+  }
+
+  // 获取指定账户和网络的交易历史
+  async getTransactionHistoryFor(
+    chainId: number, 
+    address: string, 
+    options: QueryOptions = {}
+  ): Promise<Transaction[]> {
+    try {
+      return await this.transactionManager.getTransactions(chainId, address, options)
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取指定交易历史失败:', error)
+      throw error
+    }
+  }
+
+  // 获取代币转账记录
+  async getTokenTransfers(tokenAddress?: string): Promise<TokenTransfer[]> {
+    try {
+      console.log('🔍 [WalletManager] 获取代币转账记录...')
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      const currentAccount = walletState.accounts[walletState.currentAccount]
+      const currentNetwork = walletState.networks[walletState.currentNetwork]
+      
+      return await this.transactionManager.getTokenTransfers(
+        currentNetwork.chainId,
+        currentAccount.address,
+        tokenAddress
+      )
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取代币转账失败:', error)
+      throw error
+    }
+  }
+
+  // 获取代币余额列表
+  async getTokenBalances(): Promise<TokenBalance[]> {
+    try {
+      console.log('🔍 [WalletManager] 获取代币余额...')
+      
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      const currentAccount = walletState.accounts[walletState.currentAccount]
+      const currentNetwork = walletState.networks[walletState.currentNetwork]
+      
+      return await this.transactionManager.getTokenBalances(
+        currentNetwork.chainId,
+        currentAccount.address
+      )
+    } catch (error) {
+      console.error('❌ [WalletManager] 获取代币余额失败:', error)
+      return [] // 失败时返回空数组而不是抛出错误
+    }
+  }
+
+  // 测试交易历史服务连接
+  async testTransactionService(): Promise<{
+    success: boolean
+    provider: string
+    error?: string
+    latency?: number
+  }> {
+    try {
+      const walletState = await this.getWalletState()
+      if (!walletState) {
+        throw new Error('钱包未解锁')
+      }
+
+      const currentAccount = walletState.accounts[walletState.currentAccount]
+      const currentNetwork = walletState.networks[walletState.currentNetwork]
+      
+      return await this.transactionManager.testConnection(
+        currentNetwork.chainId,
+        currentAccount.address
+      )
+    } catch (error) {
+      return {
+        success: false,
+        provider: 'unknown',
+        error: error.message
+      }
+    }
+  }
+
+  // 获取支持的链列表
+  getSupportedChainsForHistory(): number[] {
+    return this.transactionManager.getSupportedChains()
+  }
+
+  // 获取链信息
+  getChainInfoForHistory(chainId: number) {
+    return this.transactionManager.getChainInfo(chainId)
+  }
+
+//   //添加新的区块链网络
+//   async addNewNetwork(network: Omit<Network, 'currentRpcIndex'>): Promise<void> {
+//     try {
+//       const walletState = await this.getWalletState()
+//       if (!walletState) {
+//         throw new Error('钱包未解锁')
+//       }
+
+//       await this.transactionManager.addNetwork(network)
+//     } catch (error) {
+//       console.error('❌ [WalletManager] 添加新网络失败:', error)
+//       throw error
+//     }
+//   }
 }

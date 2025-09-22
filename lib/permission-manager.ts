@@ -1,5 +1,5 @@
 // 钱包授权机制实现
-import { ethers } from 'ethers'
+import { ethers, parseEther, formatEther } from 'ethers'
 
 // 授权类型定义
 export enum PermissionType {
@@ -65,75 +65,169 @@ export class PermissionManager {
   // 加载已保存的授权
   async loadPermissions(): Promise<void> {
     try {
-      const stored = localStorage.getItem('wallet_permissions')
-      if (stored) {
-        const data = JSON.parse(stored)
-        this.permissions = new Map(data)
-        console.log('✅ 已加载授权数据:', this.permissions.size, '个授权')
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        // 使用 chrome.storage.local（扩展上下文）
+        const result = await chrome.storage.local.get(['wallet_permissions', 'wallet_pending_requests'])
+        
+        if (result.wallet_permissions) {
+          this.permissions = new Map(result.wallet_permissions)
+          console.log('✅ 已加载授权数据:', this.permissions.size, '个授权')
+        }
+        
+        if (result.wallet_pending_requests) {
+          this.pendingRequests = new Map(result.wallet_pending_requests)
+          console.log('✅ 已加载待处理请求:', this.pendingRequests.size, '个请求')
+        }
+      } else {
+        // 回退到 localStorage（非扩展上下文）
+        const stored = localStorage.getItem('wallet_permissions')
+        const pendingStored = localStorage.getItem('wallet_pending_requests')
+        
+        if (stored) {
+          const data = JSON.parse(stored)
+          this.permissions = new Map(data)
+          console.log('✅ 已加载授权数据(localStorage):', this.permissions.size, '个授权')
+        }
+        
+        if (pendingStored) {
+          const data = JSON.parse(pendingStored)
+          this.pendingRequests = new Map(data)
+          console.log('✅ 已加载待处理请求(localStorage):', this.pendingRequests.size, '个请求')
+        }
       }
     } catch (error) {
-      console.error('❌ 加载授权数据失败:', error)
+      console.error('❌ 加载权限数据失败:', error)
     }
   }
 
-  // 保存授权到本地存储
+  // 保存授权到存储
   private async savePermissions(): Promise<void> {
     try {
-      const data = Array.from(this.permissions.entries())
-      localStorage.setItem('wallet_permissions', JSON.stringify(data))
-      console.log('✅ 授权数据已保存')
+      console.log('💾 [PermissionManager] 开始保存权限数据...')
+      
+      const permissionsData = Array.from(this.permissions.entries())
+      const pendingData = Array.from(this.pendingRequests.entries())
+      
+      console.log('📝 [PermissionManager] 准备保存的数据:', {
+        permissionsCount: permissionsData.length,
+        pendingRequestsCount: pendingData.length
+      })
+      
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        // 使用 chrome.storage.local（扩展上下文）
+        await chrome.storage.local.set({
+          'wallet_permissions': permissionsData,
+          'wallet_pending_requests': pendingData
+        })
+        console.log('✅ [PermissionManager] 权限数据已保存到 chrome.storage.local')
+      } else {
+        // 回退到 localStorage（非扩展上下文）
+        localStorage.setItem('wallet_permissions', JSON.stringify(permissionsData))
+        localStorage.setItem('wallet_pending_requests', JSON.stringify(pendingData))
+        console.log('✅ [PermissionManager] 权限数据已保存到 localStorage')
+      }
     } catch (error) {
-      console.error('❌ 保存授权数据失败:', error)
+      console.error('❌ [PermissionManager] 保存权限数据失败:', error)
+      console.error('❌ [PermissionManager] 错误详情:', error.stack)
+      // 重新抛出异常让调用者知道保存失败了
+      throw new Error(`保存权限数据失败: ${error.message}`)
     }
   }
 
   // 请求权限
   async requestPermission(request: PermissionRequest): Promise<string> {
-    console.log('📋 收到权限请求:', request)
+    console.log('📋 [PermissionManager] 收到权限请求:', request)
     
     // 生成请求ID
     const requestId = `perm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     request.id = requestId
+    console.log('🆔 [PermissionManager] 生成请求ID:', requestId)
     
     // 验证请求
-    if (!this.validatePermissionRequest(request)) {
-      throw new Error('无效的权限请求')
+    console.log('🔍 [PermissionManager] 开始验证权限请求:', { 
+      dappUrl: request.dappUrl, 
+      dappName: request.dappName,
+      permissions: request.permissions,
+      permissionsLength: request.permissions?.length || 0,
+      chainId: request.chainId
+    })
+    
+    try {
+      const isValid = this.validatePermissionRequest(request)
+      console.log('🔍 [PermissionManager] 验证结果:', isValid)
+      
+      if (!isValid) {
+        console.error('❌ [PermissionManager] 权限请求验证失败:', request)
+        throw new Error('权限请求创建失败：无效的权限请求参数')
+      }
+      
+      console.log('✅ [PermissionManager] 权限请求验证通过')
+    } catch (validationError) {
+      console.error('❌ [PermissionManager] 验证过程中出现异常:', validationError)
+      throw new Error(`权限请求验证失败: ${validationError.message}`)
     }
     
     // 检查是否已有相同的授权
     const existingPermission = this.findExistingPermission(request)
     if (existingPermission && existingPermission.isActive) {
-      console.log('✅ 发现现有授权，直接返回')
+      console.log('✅ [PermissionManager] 发现现有授权，直接返回')
       return existingPermission.id
     }
     
     // 存储待处理的请求
     this.pendingRequests.set(requestId, request)
+    console.log('✅ [PermissionManager] 权限请求已添加到内存:', requestId)
     
-    console.log('⏳ 权限请求已提交，等待用户确认:', requestId)
+    // 立即保存到持久化存储，确保跨上下文可见
+    try {
+      await this.savePermissions()
+      console.log('✅ [PermissionManager] 权限请求已保存到持久化存储')
+    } catch (saveError) {
+      console.error('❌ [PermissionManager] 保存权限请求失败，但请求仍然有效:', saveError)
+      // 即使保存失败，我们也继续，因为内存中已经有了请求
+    }
+    
+    console.log('⏳ [PermissionManager] 权限请求已提交，等待用户确认:', requestId)
+    console.log('📊 [PermissionManager] 当前待处理请求数量:', this.pendingRequests.size)
     return requestId
   }
 
   // 验证权限请求
   private validatePermissionRequest(request: PermissionRequest): boolean {
-    if (!request.dappUrl || !request.permissions.length) {
+    console.log('🔍 开始验证权限请求:', request)
+    
+    if (!request.dappUrl) {
+      console.error('❌ 验证失败: dappUrl 为空')
+      return false
+    }
+    
+    if (!request.permissions || !Array.isArray(request.permissions) || request.permissions.length === 0) {
+      console.error('❌ 验证失败: permissions 无效或为空', { 
+        permissions: request.permissions, 
+        isArray: Array.isArray(request.permissions),
+        length: request.permissions?.length 
+      })
       return false
     }
     
     // 验证URL格式
     try {
       new URL(request.dappUrl)
-    } catch {
+      console.log('✅ URL 格式验证通过:', request.dappUrl)
+    } catch (error) {
+      console.error('❌ 验证失败: URL 格式无效:', request.dappUrl, error)
       return false
     }
     
     // 验证权限类型
     for (const permission of request.permissions) {
       if (!Object.values(PermissionType).includes(permission)) {
+        console.error('❌ 验证失败: 无效的权限类型:', permission)
         return false
       }
     }
     
+    console.log('✅ 权限请求验证完全通过')
     return true
   }
 
@@ -151,6 +245,11 @@ export class PermissionManager {
 
   // 检查是否包含所需权限
   private hasRequiredPermissions(granted: PermissionType[], required: PermissionType[]): boolean {
+    // 添加防护性检查
+    if (!granted || !Array.isArray(granted) || !required || !Array.isArray(required)) {
+      console.warn('⚠️ hasRequiredPermissions 参数无效:', { granted, required })
+      return false
+    }
     return required.every(perm => granted.includes(perm))
   }
 
@@ -185,10 +284,12 @@ export class PermissionManager {
 
     // 保存授权
     this.permissions.set(permission.id, permission)
-    await this.savePermissions()
-
+    
     // 移除待处理请求
     this.pendingRequests.delete(requestId)
+    
+    // 保存所有状态更改
+    await this.savePermissions()
 
     console.log('✅ 权限已授予:', permission.id)
     return permission
@@ -198,16 +299,30 @@ export class PermissionManager {
   async rejectPermission(requestId: string): Promise<void> {
     const request = this.pendingRequests.get(requestId)
     if (!request) {
-      throw new Error('权限请求不存在')
+      console.warn('⚠️ 尝试拒绝不存在的权限请求:', requestId)
+      return // 不抛出错误，因为可能是重复调用
     }
 
     console.log('❌ 用户拒绝权限:', requestId)
     this.pendingRequests.delete(requestId)
+    
+    // 保存状态更改
+    await this.savePermissions()
   }
 
   // 检查权限
   checkPermission(dappUrl: string, permission: PermissionType, account: string, chainId: number): boolean {
     for (const granted of this.permissions.values()) {
+      // 添加防护性检查，确保必要字段存在且为数组
+      if (!granted || 
+          !granted.accounts || 
+          !Array.isArray(granted.accounts) ||
+          !granted.permissions || 
+          !Array.isArray(granted.permissions)) {
+        console.warn('⚠️ 发现无效的权限记录:', granted)
+        continue
+      }
+      
       if (granted.dappUrl === dappUrl &&
           granted.chainId === chainId &&
           granted.accounts.includes(account) &&
@@ -292,9 +407,9 @@ export class PermissionManager {
         permission.usage.transactionCount++
         
         if (transactionAmount) {
-          const currentTotal = ethers.parseEther(permission.usage.totalAmount || '0')
-          const newAmount = ethers.parseEther(transactionAmount)
-          permission.usage.totalAmount = ethers.formatEther(currentTotal + newAmount)
+          const currentTotal = parseEther(permission.usage.totalAmount || '0')
+          const newAmount = parseEther(transactionAmount)
+          permission.usage.totalAmount = formatEther(currentTotal + newAmount)
         }
         
         await this.savePermissions()

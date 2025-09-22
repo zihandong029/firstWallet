@@ -1,7 +1,8 @@
 /* 钱包容器 */
 .wallet-container {
   width: 360px;
-  height: 600px;
+  height: 640px;
+  min-height: 600px;
   background: linear-gradient(135deg, #4338ca 0%, #7e22ce 100%);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #333;
@@ -81,6 +82,7 @@ body {
   margin-bottom: 8px;
   background: linear-gradient(45deg, #3b82f6, #8b5cf6);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -374,8 +376,11 @@ body {
   border-radius: 20px 20px 0 0;
   margin-top: 60px;
   height: calc(100% - 60px);
+  min-height: 500px;
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard-header {
@@ -504,13 +509,21 @@ body {
 /* 内容区域 */
 .tab-content {
   padding: 20px;
-  height: 200px;
+  height: calc(100vh - 340px);
+  min-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
+  flex: 1;
 }
 
 /* 发送表单 */
 .send-form {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .send-form .input-group {
@@ -518,12 +531,17 @@ body {
 }
 
 .gas-settings {
-  display: flex;
-  gap: 10px;
+  margin-bottom: 20px;
 }
 
 .gas-settings .input-group {
-  flex: 1;
+  margin-bottom: 10px;
+}
+
+.grid-cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 /* 账户选择器 */
@@ -572,4 +590,89 @@ body {
   font-size: 14px;
   font-weight: 500;
   color: #333;
-} 
+}
+
+/* 修复兼容性问题 */
+.unlock-title {
+  background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 网络选择器样式 */
+.network-selector-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+
+.network-selector-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 警告框样式 */
+.warning-box {
+  background: #fef3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.warning-text {
+  color: #856404;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 余额卡片样式 */
+.balance-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.balance-main {
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.balance-secondary {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 网络卡片样式 */
+.network-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  margin-top: 16px;
+}
+
+/* 旋转动画 */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
